@@ -3,7 +3,7 @@ uvicorn
 opencv-python-headless
 torch
 torchvision
-paddle
-ultralytics
+paddlepaddle==2.6.1
 paddleocr
+ultralytics
 io
