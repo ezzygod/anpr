@@ -6,3 +6,4 @@ torchvision
 paddlepaddle==2.6.1
 paddleocr
 ultralytics
+albucore==0.0.23
