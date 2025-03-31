@@ -5,12 +5,15 @@ from paddleocr import PaddleOCR
 from ultralytics import YOLO
 from utils import correct_plate, save_to_csv
 
-# Inițializare modele
-model = YOLO("yolov8n.pt")  # Modelul YOLOv8
+# ✅ Încarcă modele O DATĂ (evită consumul excesiv de memorie)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model = YOLO("yolov8s.pt").to(device)  # Model YOLO mai mic
 ocr = PaddleOCR(use_angle_cls=True, lang='en')
 
 def process_frame(frame):
-    results = model(frame)
+    with torch.no_grad():  # ✅ Evită consum inutil de memorie
+        results = model(frame)
+    
     plates_detected = []
     
     for result in results:
@@ -28,13 +31,12 @@ def process_frame(frame):
     
     return plates_detected
 
-def main():
-    cap = cv2.VideoCapture(1)
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
+if __name__ == "__main__":
+    # ✅ Test pe imagine în loc de webcam (evită erorile pe servere)
+    frame = cv2.imread("test.jpg")
+    if frame is None:
+        print("Eroare: Nu s-a găsit imaginea 'test.jpg'")
+    else:
         plates = process_frame(frame)
         save_to_csv([[text, conf, bbox] for text, conf, bbox in plates])
         
@@ -43,12 +45,5 @@ def main():
             cv2.putText(frame, f"{text} ({conf:.2f})", (x1, y1 - 10), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         
-        cv2.imshow("License Plate Detection", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-    
-    cap.release()
-    cv2.destroyAllWindows()
-
-if __name__ == "__main__":
-    main()
+        cv2.imwrite("output.jpg", frame)  # ✅ Salvează rezultatul
+        print("Rezultatul a fost salvat ca 'output.jpg'")
