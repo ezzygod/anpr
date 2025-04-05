@@ -6,6 +6,7 @@ from ultralytics import YOLO
 from utils import correct_plate, save_to_csv
 from io import BytesIO
 import uvicorn
+import os
 
 app = FastAPI()
 
