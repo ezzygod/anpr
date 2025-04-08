@@ -1,8 +1,8 @@
 fastapi
 uvicorn
 opencv-python
-torch
-torchvision
+torch==1.9.0
+torchvision==0.10.0
 paddlepaddle==2.6.1
 paddleocr
 ultralytics
