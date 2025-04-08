@@ -1,4 +1,5 @@
 from fastapi import FastAPI, File, UploadFile
+from fastapi.middleware.cors import CORSMiddleware  # Importă middleware-ul CORS
 import cv2
 import numpy as np
 from paddleocr import PaddleOCR
@@ -7,6 +8,15 @@ from utils import correct_plate
 import os
 
 app = FastAPI()
+
+# Permite CORS pentru toate originile
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://anpr-production.up.railway.app"],  # Setează aici domeniul tău de producție
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Inițializare modele
 model = YOLO("yolov8n.pt")
