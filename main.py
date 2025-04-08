@@ -18,7 +18,8 @@ async def process_image(file: UploadFile = File(...)):
     image_array = np.frombuffer(image_bytes, np.uint8)
     frame = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
 
-    results = model(frame)
+    print("Running YOLO detection...")
+    results = model(frame)  # Detectarea obiectelor cu YOLO
     plates_detected = []
 
     for result in results:
@@ -27,6 +28,7 @@ async def process_image(file: UploadFile = File(...)):
             crop = frame[y1:y2, x1:x2]
 
             if crop.size > 0:
+                print("Running OCR on detected region...")
                 ocr_result = ocr.ocr(crop, cls=True)
                 if ocr_result and ocr_result[0]:
                     for line in ocr_result[0]:
@@ -36,8 +38,7 @@ async def process_image(file: UploadFile = File(...)):
 
     return {"plates": plates_detected}
 
-
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.environ.get("PORT", 8000))  # Folosește portul de la Railway
     uvicorn.run(app, host="0.0.0.0", port=port)
