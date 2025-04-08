@@ -3,8 +3,7 @@ import cv2
 import numpy as np
 from paddleocr import PaddleOCR
 from ultralytics import YOLO
-from utils import correct_plate, save_to_csv
-from io import BytesIO
+from utils import correct_plate
 import os
 
 app = FastAPI()
@@ -20,32 +19,20 @@ async def process_image(file: UploadFile = File(...)):
     frame = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
 
     results = model(frame)
-    print("YOLO Results:", results)
-
     plates_detected = []
 
     for result in results:
-        for i, box in enumerate(result.boxes.xyxy):
+        for box in result.boxes.xyxy:
             x1, y1, x2, y2 = map(int, box[:4])
             crop = frame[y1:y2, x1:x2]
 
-            # Salvează temporar crop-ul pentru debug
-            crop_filename = f"crop_debug_{i}.jpg"
-            cv2.imwrite(crop_filename, crop)
-            print(f"Saved crop: {crop_filename}")
-
             if crop.size > 0:
                 ocr_result = ocr.ocr(crop, cls=True)
-                print(f"OCR Result for crop {i}:", ocr_result)
-
                 if ocr_result and ocr_result[0]:
                     for line in ocr_result[0]:
                         text, conf = line[1]
                         text = correct_plate(text.upper().replace(" ", ""))
                         plates_detected.append({"text": text, "confidence": conf})
-
-    save_to_csv([[p["text"], p["confidence"]] for p in plates_detected])
-    print("Final plates detected:", plates_detected)
 
     return {"plates": plates_detected}
 
