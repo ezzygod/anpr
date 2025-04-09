@@ -1,6 +1,6 @@
-FROM python:3.10
+FROM python:3.9.0
 
-# Actualizează sistemul și instalează librării necesare pentru OpenCV și OCR
+# Instalare dependențe sistem necesare pentru OpenCV și PaddleOCR
 RUN apt-get update && apt-get install -y \
     libgl1-mesa-glx \
     libglib2.0-0 \
@@ -10,17 +10,17 @@ RUN apt-get update && apt-get install -y \
 # Setează directorul de lucru
 WORKDIR /app
 
-# Copiază fișierele proiectului în container
+# Copiază fișierele proiectului
 COPY . .
 
-# Upgrade la pip, setuptools și wheel
+# Actualizează pip, setuptools și wheel (important pentru build-ul unor pachete)
 RUN pip install --upgrade pip setuptools wheel
 
-# Instalează toate dependințele din requirements.txt
+# Instalează pachetele din requirements.txt
 RUN pip install -r requirements.txt
 
-# Expune portul pe care va rula aplicația
+# Expune portul aplicației FastAPI
 EXPOSE 8000
 
-# Comandă de pornire a aplicației FastAPI
+# Comandă de rulare a aplicației
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
