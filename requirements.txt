@@ -3,8 +3,8 @@ uvicorn
 opencv-python
 torch
 torchvision
-paddlepaddle==2.6.1
+paddlepaddle
 paddleocr
 ultralytics
-albucore==0.0.23
+albucore
 python-multipart
