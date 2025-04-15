@@ -56,10 +56,14 @@ async def process_image(file: UploadFile = File(...)):
                 if ocr_result and ocr_result[0]:
                     for line in ocr_result[0]:
                         if len(line) >= 2:
-                            text, conf = line[1]
-                            text = correct_plate(text.upper().replace(" ", ""))
-                            print(f"Detected text: {text}, confidence: {conf}")
-                            plates_detected.append({"text": text, "confidence": conf})
+                            raw_text, conf = line[1]
+                            print(f"OCR raw result: {raw_text}, confidence: {conf}")
+                            plate = correct_plate(raw_text)
+                            if plate:
+                                print(f"Valid plate detected: {plate}")
+                                plates_detected.append({"text": plate, "confidence": conf})
+                            else:
+                                print("Text ignored (not a valid plate).")
                 else:
                     print("No text detected in crop.")
             else:
