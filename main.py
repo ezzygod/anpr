@@ -4,24 +4,27 @@ import cv2
 import numpy as np
 from paddleocr import PaddleOCR
 from ultralytics import YOLO
-from utils import correct_plate
+from utils import correct_plate, process_plate_detection
 import os
+import re
 
 app = FastAPI()
 
-# CORS pentru Railway
+# Permite CORS pentru toate originile (pentru testare locală)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://anpr-production.up.railway.app"],
+    allow_origins=["https://anpr-production.up.railway.app"],  # Atenție: în producție setează domenii sigure
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Inițializare modele
-model = YOLO("yolov8n.pt")  # ⚠️ Poți schimba cu un model antrenat pe plăcuțe, dacă ai
+model = YOLO("yolov8n.pt")
 ocr = PaddleOCR(use_angle_cls=True, lang='en')
 
+
+# Endpoint-ul pentru procesarea imaginii
 @app.post("/process")
 async def process_image(file: UploadFile = File(...)):
     image_bytes = await file.read()
@@ -29,53 +32,32 @@ async def process_image(file: UploadFile = File(...)):
     frame = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
 
     print("Running YOLO detection...")
-    results = model.predict(source=frame, verbose=True)
-    
-    plates_set = set()
+    results = model(frame)  # Detectarea obiectelor cu YOLO
     plates_detected = []
 
-    print(f"YOLO returned {len(results)} result(s)")
-
     for result in results:
-        boxes = result.boxes
-        if boxes is None or boxes.xyxy is None or len(boxes.xyxy) == 0:
-            print("No bounding boxes found.")
-            continue
-
-        for i, box in enumerate(boxes.xyxy):
+        for box in result.boxes.xyxy:
             x1, y1, x2, y2 = map(int, box[:4])
             crop = frame[y1:y2, x1:x2]
 
-            print(f"Cropping region {i}: x1={x1}, y1={y1}, x2={x2}, y2={y2}")
-
             if crop.size > 0:
-                # Opțional: salvează crop pentru debugging
-                cv2.imwrite(f"/tmp/crop_{i}.jpg", crop)
-
                 print("Running OCR on detected region...")
                 ocr_result = ocr.ocr(crop, cls=True)
-
                 if ocr_result and ocr_result[0]:
                     for line in ocr_result[0]:
-                        if len(line) >= 2:
-                            text, conf = line[1]
-                            text = correct_plate(text.upper().replace(" ", ""))
-                            if text and text not in plates_set:
-                                print(f"Detected text: {text}, confidence: {conf}")
-                                plates_set.add(text)
-                                plates_detected.append({"text": text, "confidence": conf})
-                            else:
-                                print(f"Skipped duplicate or invalid text: {text}")
-                        else:
-                            print("Line without valid text.")
-                else:
-                    print("No text detected in crop.")
-            else:
-                print("Invalid crop.")
+                        raw_text, conf = line[1]
+                        print(f"OCR raw: {raw_text}")
+                        plate = correct_plate(raw_text)
+                        if plate:
+                            print(f"Valid plate: {plate}")
+                            plates_detected.append({"text": plate, "confidence": conf})
 
-    print(f"Returning {len(plates_detected)} unique plate(s)")
+    # Procesăm plăcuțele pentru a elimina duplicatele și valorile None
+    plates_detected = process_plate_detection(plates_detected)
+
     return {"plates": plates_detected}
 
+# Pornirea aplicației FastAPI
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
