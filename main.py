@@ -19,7 +19,7 @@ app.add_middleware(
 )
 
 # Inițializare modele
-model = YOLO("yolov8n.pt")  # ⚠️ vezi nota despre modelul corect
+model = YOLO("yolov8n.pt")  # ⚠️ Poți schimba cu un model antrenat pe plăcuțe, dacă ai
 ocr = PaddleOCR(use_angle_cls=True, lang='en')
 
 @app.post("/process")
@@ -30,6 +30,8 @@ async def process_image(file: UploadFile = File(...)):
 
     print("Running YOLO detection...")
     results = model.predict(source=frame, verbose=True)
+    
+    plates_set = set()
     plates_detected = []
 
     print(f"YOLO returned {len(results)} result(s)")
@@ -58,14 +60,20 @@ async def process_image(file: UploadFile = File(...)):
                         if len(line) >= 2:
                             text, conf = line[1]
                             text = correct_plate(text.upper().replace(" ", ""))
-                            print(f"Detected text: {text}, confidence: {conf}")
-                            plates_detected.append({"text": text, "confidence": conf})
+                            if text and text not in plates_set:
+                                print(f"Detected text: {text}, confidence: {conf}")
+                                plates_set.add(text)
+                                plates_detected.append({"text": text, "confidence": conf})
+                            else:
+                                print(f"Skipped duplicate or invalid text: {text}")
+                        else:
+                            print("Line without valid text.")
                 else:
                     print("No text detected in crop.")
             else:
                 print("Invalid crop.")
 
-    print(f"Returning {len(plates_detected)} plate(s)")
+    print(f"Returning {len(plates_detected)} unique plate(s)")
     return {"plates": plates_detected}
 
 if __name__ == "__main__":
