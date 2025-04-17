@@ -8,3 +8,4 @@ paddleocr
 ultralytics
 albucore
 python-multipart
+asyncpg
