@@ -6,6 +6,15 @@ char_map = {
     '0': 'O', '1': 'I', '3': 'J', '4': 'A', '6': 'G', '5': 'S'
 }
 
+# Lista județelor valide din România (prefixe)
+judete = {
+    'AB', 'AR', 'AG', 'BC', 'BH', 'BN', 'BR', 'BT', 'BV', 'BZ',
+    'CS', 'CL', 'CJ', 'CT', 'CV', 'DB', 'DJ', 'GL', 'GR', 'GJ',
+    'HR', 'HD', 'IL', 'IS', 'IF', 'MM', 'MH', 'MS', 'NT', 'OT',
+    'PH', 'SM', 'SJ', 'SB', 'SV', 'TR', 'TM', 'TL', 'VS', 'VL',
+    'VN', 'BR', 'B'  # B e București
+}
+
 def generate_variants(text):
     text = text.upper().replace(" ", "")
     variants = [[]]
@@ -28,15 +37,27 @@ def correct_plate(text):
     for candidate in candidates:
         if candidate in seen_plates:
             continue
+
+        # Validare București: B + 2-3 cifre + 3 litere
         if re.fullmatch(r"B\d{2,3}[A-Z]{3}", candidate):
             seen_plates.add(candidate)
             return candidate
+
+        # Validare alte județe: 2 litere + 2 cifre + 3 litere
         if re.fullmatch(r"[A-Z]{2}\d{2}[A-Z]{3}", candidate):
-            seen_plates.add(candidate)
-            return candidate
+            judet = candidate[:2]
+            if judet in judete:
+                seen_plates.add(candidate)
+                return candidate
+
+        # Număr roșu: 2 litere + 6 cifre
         if re.fullmatch(r"[A-Z]{2}\d{6}", candidate):
-            seen_plates.add(candidate)
-            return candidate
+            judet = candidate[:2]
+            if judet in judete:
+                seen_plates.add(candidate)
+                return candidate
+
+        # București roșu: B + 6 cifre
         if re.fullmatch(r"B\d{6}", candidate):
             seen_plates.add(candidate)
             return candidate
