@@ -1,18 +1,24 @@
-# utils.py - Funcții pentru mapare caractere
 import re
 
-# Dicționar pentru corectarea caracterelor
 char_map = {'O': '0', 'I': '1', 'J': '3', 'A': '4', 'G': '6', 'S': '5'}
 
-# Aplică maparea doar la pozițiile numerice corecte
 def correct_plate(text):
+    text = text.upper().replace(" ", "")
     corrected = list(text)
 
-    # Identificăm structura standard: 2 litere + 2 cifre + 3 litere
-    pattern = re.match(r"([A-Z]{2})(\d{2})([A-Z]{3})", text)
-    if pattern:
-        prefix, num, suffix = pattern.groups()
-        num = "".join([char_map[c] if c in char_map else c for c in num])  # Corectăm doar cifrele
-        return f"{prefix}{num}{suffix}"
+    # București: B + 2 sau 3 cifre + 3 litere
+    match_b = re.match(r"^B(\d{2,3})([A-Z]{3})$", text)
+    if match_b:
+        digits, suffix = match_b.groups()
+        digits = ''.join([char_map.get(c, c) for c in digits])
+        return f"B{digits}{suffix}"
 
-    return text  # Returnăm originalul dacă nu respectă formatul
+    # Alte județe: 2 litere + 2 cifre + 3 litere
+    match_judet = re.match(r"^([A-Z]{2})(\d{2})([A-Z]{3})$", text)
+    if match_judet:
+        judet, digits, suffix = match_judet.groups()
+        digits = ''.join([char_map.get(c, c) for c in digits])
+        return f"{judet}{digits}{suffix}"
+
+    # Dacă nu se potrivește niciun format cunoscut, returnăm textul necorectat
+    return text
