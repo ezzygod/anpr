@@ -1,24 +1,56 @@
 import re
 
-char_map = {'O': '0', 'I': '1', 'J': '3', 'A': '4', 'G': '6', 'S': '5'}
+# Mapare caractere asemănătoare
+char_map = {
+    'O': '0', 'I': '1', 'J': '3', 'A': '4', 'G': '6', 'S': '5',
+    '0': 'O', '1': 'I', '3': 'J', '4': 'A', '6': 'G', '5': 'S'
+}
+
+def generate_variants(text):
+    text = text.upper().replace(" ", "")
+    variants = [[]]
+
+    for c in text:
+        new_variants = []
+        mapped = char_map.get(c, c)
+        for v in variants:
+            new_variants.append(v + [c])  # original
+            if mapped != c:
+                new_variants.append(v + [mapped])  # mapat
+        variants = new_variants
+
+    return ["".join(v) for v in variants]
 
 def correct_plate(text):
-    text = text.upper().replace(" ", "")
-    corrected = list(text)
+    candidates = generate_variants(text)
+    seen_plates = set()
 
-    # București: B + 2 sau 3 cifre + 3 litere
-    match_b = re.match(r"^B(\d{2,3})([A-Z]{3})$", text)
-    if match_b:
-        digits, suffix = match_b.groups()
-        digits = ''.join([char_map.get(c, c) for c in digits])
-        return f"B{digits}{suffix}"
+    for candidate in candidates:
+        if candidate in seen_plates:
+            continue
+        if re.fullmatch(r"B\d{2,3}[A-Z]{3}", candidate):
+            seen_plates.add(candidate)
+            return candidate
+        if re.fullmatch(r"[A-Z]{2}\d{2}[A-Z]{3}", candidate):
+            seen_plates.add(candidate)
+            return candidate
+        if re.fullmatch(r"[A-Z]{2}\d{6}", candidate):
+            seen_plates.add(candidate)
+            return candidate
+        if re.fullmatch(r"B\d{6}", candidate):
+            seen_plates.add(candidate)
+            return candidate
 
-    # Alte județe: 2 litere + 2 cifre + 3 litere
-    match_judet = re.match(r"^([A-Z]{2})(\d{2})([A-Z]{3})$", text)
-    if match_judet:
-        judet, digits, suffix = match_judet.groups()
-        digits = ''.join([char_map.get(c, c) for c in digits])
-        return f"{judet}{digits}{suffix}"
+    return None
 
-    # Dacă nu se potrivește niciun format cunoscut, returnăm textul necorectat
-    return text
+def process_plate_detection(plates_detected):
+    valid_plates = [plate for plate in plates_detected if plate and plate != "null"]
+    unique_plates = []
+    seen_plates = set()
+
+    for plate in valid_plates:
+        if plate['text'] not in seen_plates:
+            unique_plates.append(plate)
+            seen_plates.add(plate['text'])
+
+    return unique_plates
