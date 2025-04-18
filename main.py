@@ -7,24 +7,65 @@ from ultralytics import YOLO
 from utils import correct_plate, process_plate_detection
 import os
 import re
+import psycopg2
+from datetime import datetime
+from dotenv import load_dotenv
+
+# Load env vars
+load_dotenv()
 
 app = FastAPI()
 
-# Permite CORS pentru toate originile (pentru testare locală)
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://anpr-production.up.railway.app"],  # Atenție: în producție setează domenii sigure
+    allow_origins=["https://anpr-production.up.railway.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Inițializare modele
+# YOLO + OCR
 model = YOLO("yolov8n.pt")
 ocr = PaddleOCR(use_angle_cls=True, lang='en')
 
+# DB config
+DB_CONFIG = {
+    "user": os.getenv("postgres"),
+    "password": os.getenv("Vtmvtm12..."),
+    "host": os.getenv("db.rubcrxndddtdlbyqwzos.supabase.co"),
+    "port": os.getenv("5432"),
+    "dbname": os.getenv("postgres")
+}
 
-# Endpoint-ul pentru procesarea imaginii
+def get_abonament_info(numar_inmatriculare):
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+        query = """
+            SELECT nume_proprietar, data_achizitie, data_expirare
+            FROM abonamente
+            WHERE LOWER(numar_inmatriculare) = LOWER(%s)
+        """
+        cursor.execute(query, (numar_inmatriculare,))
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if result:
+            nume, achizitie, expirare = result
+            acum = datetime.utcnow()
+            timp_ramas = expirare - acum
+            return {
+                "nume_proprietar": nume,
+                "data_achizitie": achizitie,
+                "data_expirare": expirare,
+                "timp_ramas": str(timp_ramas) if timp_ramas.total_seconds() > 0 else "Expirat"
+            }
+    except Exception as e:
+        print(f"DB Error: {e}")
+    return None
+
+
 @app.post("/process")
 async def process_image(file: UploadFile = File(...)):
     image_bytes = await file.read()
@@ -32,7 +73,7 @@ async def process_image(file: UploadFile = File(...)):
     frame = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
 
     print("Running YOLO detection...")
-    results = model(frame)  # Detectarea obiectelor cu YOLO
+    results = model(frame)
     plates_detected = []
 
     for result in results:
@@ -50,14 +91,17 @@ async def process_image(file: UploadFile = File(...)):
                         plate = correct_plate(raw_text)
                         if plate:
                             print(f"Valid plate: {plate}")
-                            plates_detected.append({"text": plate, "confidence": conf})
+                            abonament = get_abonament_info(plate)
+                            plates_detected.append({
+                                "text": plate,
+                                "confidence": conf,
+                                "abonament_info": abonament
+                            })
 
-    # Procesăm plăcuțele pentru a elimina duplicatele și valorile None
     plates_detected = process_plate_detection(plates_detected)
-
     return {"plates": plates_detected}
 
-# Pornirea aplicației FastAPI
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
