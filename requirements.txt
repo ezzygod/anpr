@@ -8,6 +8,7 @@ paddleocr
 ultralytics
 albucore
 python-multipart
+sqlalchemy
 asyncpg
-psycopg2-binary
-python-dotenv
+databases
+
