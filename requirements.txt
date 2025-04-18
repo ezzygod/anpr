@@ -9,6 +9,6 @@ ultralytics
 albucore
 python-multipart
 sqlalchemy
-asyncpg
 databases
+aiomysql
 
