@@ -1,20 +1,16 @@
-from sqlalchemy import create_engine, MetaData, Table, Column, String, Date, Integer
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, String, Date
+from sqlalchemy.ext.declarative import declarative_base
 from databases import Database
-import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://abonamente_user:JhoMGJk2pZi5TifSzZEPQPuRncST01iS@dpg-d011uuk9c44c73cpso90-a.oregon-postgres.render.com/abonamente")  # înlocuiește cu URL-ul tău
+DATABASE_URL = "mysql+aiomysql://sql7773773:QL5qYji5K5@sql7.freesqldatabase.com:3306/sql7773773"
 
 database = Database(DATABASE_URL)
 Base = declarative_base()
 
 class Subscription(Base):
     __tablename__ = "abonamente"
-    plate = Column(String, primary_key=True)
-    owner = Column(String)
-    start_date = Column(Date)
-    end_date = Column(Date)
-
-# Doar pentru crearea tabelei o dată:
-engine = create_engine(DATABASE_URL)
-Base.metadata.create_all(engine)
+    numar_inmatriculare = Column(String, primary_key=True)
+    nume = Column(String)
+    prenume = Column(String)
+    data_achizitie = Column(Date)
+    data_expirare = Column(Date)
