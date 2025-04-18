@@ -6,12 +6,11 @@ from paddleocr import PaddleOCR
 from ultralytics import YOLO
 from utils import correct_plate, process_plate_detection
 import os
-import re
 import psycopg2
 from datetime import datetime
 from dotenv import load_dotenv
 
-# Load env vars
+# Load environment variables
 load_dotenv()
 
 app = FastAPI()
@@ -29,13 +28,13 @@ app.add_middleware(
 model = YOLO("yolov8n.pt")
 ocr = PaddleOCR(use_angle_cls=True, lang='en')
 
-# DB config
+# DB config from .env
 DB_CONFIG = {
-    "user": os.getenv("postgres"),
-    "password": os.getenv("Vtmvtm12..."),
-    "host": os.getenv("db.rubcrxndddtdlbyqwzos.supabase.co"),
-    "port": os.getenv("5432"),
-    "dbname": os.getenv("postgres")
+    "user": os.getenv("DB_USER"),
+    "password": os.getenv("DB_PASSWORD"),
+    "host": os.getenv("DB_HOST"),
+    "port": os.getenv("DB_PORT"),
+    "dbname": os.getenv("DB_NAME")
 }
 
 def get_abonament_info(numar_inmatriculare):
@@ -64,7 +63,6 @@ def get_abonament_info(numar_inmatriculare):
     except Exception as e:
         print(f"DB Error: {e}")
     return None
-
 
 @app.post("/process")
 async def process_image(file: UploadFile = File(...)):
@@ -100,7 +98,6 @@ async def process_image(file: UploadFile = File(...)):
 
     plates_detected = process_plate_detection(plates_detected)
     return {"plates": plates_detected}
-
 
 if __name__ == "__main__":
     import uvicorn
