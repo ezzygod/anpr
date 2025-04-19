@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import cv2
@@ -6,8 +6,8 @@ import numpy as np
 from paddleocr import PaddleOCR
 from ultralytics import YOLO
 from utils import correct_plate, process_plate_detection
-from database import database, Subscription  # Subscription trebuie să fie un `Table`
-from sqlalchemy import insert
+from database import database, Subscription
+from sqlalchemy import insert, select
 from datetime import datetime, timedelta
 import os
 
@@ -44,6 +44,18 @@ class SubscriptionCreate(BaseModel):
 
 @app.post("/add-subscription")
 async def add_subscription(data: SubscriptionCreate):
+    # verificăm dacă numărul e deja înregistrat
+    query_check = select(Subscription).where(Subscription.c.numar_inmatriculare == data.numar_inmatriculare)
+    existing_record = await database.fetch_one(query_check)
+
+    if existing_record:
+        return {
+            "message": f"Abonament deja existent pe numele {existing_record['nume']} {existing_record['prenume']}",
+            "numar_inmatriculare": data.numar_inmatriculare,
+            "expira_pe": str(existing_record["data_expirare"])
+        }
+
+    # dacă nu există, adăugăm abonamentul
     data_achizitie = datetime.utcnow() + timedelta(hours=3)
     data_expirare = data_achizitie + timedelta(minutes=data.durata_minute)
 
@@ -55,12 +67,45 @@ async def add_subscription(data: SubscriptionCreate):
         data_expirare=data_expirare
     )
     await database.execute(query)
+
     return {
         "message": "Abonament adaugat cu succes",
         "nume": data.nume,
         "prenume": data.prenume,
         "expira_pe": str(data_expirare)
     }
+
+
+
+def formateaza_status(delta: timedelta) -> str:
+    zile = delta.days
+    ore = delta.seconds // 3600
+    minute = (delta.seconds % 3600) // 60
+
+    parts = []
+    if zile > 0:
+        parts.append((zile, "zi", "zile", "feminin"))
+    if ore > 0:
+        parts.append((ore, "oră", "ore", "feminin"))
+    if minute > 0:
+        parts.append((minute, "minut", "minute", "masculin"))
+
+    if not parts:
+        return "mai puțin de un minut rămas"
+
+    if len(parts) == 1:
+        valoare, singular, plural, gen = parts[0]
+        forma = singular if valoare == 1 else plural
+        if valoare == 1:
+            return f"{valoare} {forma} {'rămasă' if gen == 'feminin' else 'rămas'}"
+        else:
+            return f"{valoare} {forma} rămase"
+    else:
+        fragmente = []
+        for valoare, singular, plural, _ in parts:
+            forma = singular if valoare == 1 else plural
+            fragmente.append(f"{valoare} {forma}")
+        return " și ".join(fragmente) + " rămase"
 
 
 @app.post("/process")
@@ -92,7 +137,7 @@ async def process_image(file: UploadFile = File(...)):
     for plate_info in plates_detected:
         plate_text = plate_info["text"]
 
-        query = Subscription.select().where(Subscription.c.numar_inmatriculare == plate_text)
+        query = select(Subscription).where(Subscription.c.numar_inmatriculare == plate_text)
         record = await database.fetch_one(query)
 
         if record:
@@ -102,19 +147,7 @@ async def process_image(file: UploadFile = File(...)):
             total_secunde = int(delta.total_seconds())
 
             if total_secunde > 0:
-                zile = delta.days
-                ore = delta.seconds // 3600
-                minute = (delta.seconds % 3600) // 60
-
-                parts = []
-                if zile > 0:
-                    parts.append(f"{zile} zi{'le' if zile > 1 else ''}")
-                if ore > 0:
-                    parts.append(f"{ore} or{'e' if ore > 1 else 'ă'}")
-                if minute > 0:
-                    parts.append(f"{minute} minut{'e' if minute > 1 else ''}")
-
-                status = " și ".join(parts) + " rămase" if parts else "mai puțin de un minut rămas"
+                status = formateaza_status(delta)
             elif total_secunde == 0:
                 status = "tocmai a expirat abonamentul"
             else:
