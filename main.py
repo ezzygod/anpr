@@ -6,13 +6,13 @@ import numpy as np
 from paddleocr import PaddleOCR
 from ultralytics import YOLO
 from utils import correct_plate, process_plate_detection
-from database import database, Subscription
+from database import database, Subscription  # Subscription trebuie să fie un `Table`
+from sqlalchemy import insert
 from datetime import datetime, timedelta
 import os
 
 app = FastAPI()
 
-# Permite accesul din aplicația Flutter
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://anpr-production.up.railway.app"],
@@ -21,35 +21,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inițializăm modelele
 model = YOLO("yolov8n.pt")
 ocr = PaddleOCR(use_angle_cls=True, lang='en')
 
-# Conectare la bază de date
+
 @app.on_event("startup")
 async def startup():
     await database.connect()
+
 
 @app.on_event("shutdown")
 async def shutdown():
     await database.disconnect()
 
 
-# ✅ Model pentru abonament cu durată customizabilă
 class SubscriptionCreate(BaseModel):
     nume: str
     prenume: str
     numar_inmatriculare: str
-    durata_minute: int  # <-- vine din Flutter
+    durata_minute: int
 
 
-# ✅ Endpoint pentru adăugare abonament cu durată personalizată
 @app.post("/add-subscription")
 async def add_subscription(data: SubscriptionCreate):
     data_achizitie = datetime.utcnow() + timedelta(hours=3)
     data_expirare = data_achizitie + timedelta(minutes=data.durata_minute)
 
-    query = Subscription.insert().values(
+    query = insert(Subscription).values(
         nume=data.nume,
         prenume=data.prenume,
         numar_inmatriculare=data.numar_inmatriculare,
@@ -60,7 +58,6 @@ async def add_subscription(data: SubscriptionCreate):
     return {"message": "Abonament adăugat cu succes!"}
 
 
-# ✅ Endpoint pentru procesare imagine
 @app.post("/process")
 async def process_image(file: UploadFile = File(...)):
     image_bytes = await file.read()
@@ -90,7 +87,7 @@ async def process_image(file: UploadFile = File(...)):
     for plate_info in plates_detected:
         plate_text = plate_info["text"]
 
-        query = Subscription.__table__.select().where(Subscription.numar_inmatriculare == plate_text)
+        query = Subscription.select().where(Subscription.c.numar_inmatriculare == plate_text)
         record = await database.fetch_one(query)
 
         if record:
@@ -136,7 +133,6 @@ async def process_image(file: UploadFile = File(...)):
     return {"plates": results}
 
 
-# ✅ Pornire server
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
