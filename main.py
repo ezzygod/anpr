@@ -55,7 +55,12 @@ async def add_subscription(data: SubscriptionCreate):
         data_expirare=data_expirare
     )
     await database.execute(query)
-    return {"message": "Abonament adăugat cu succes!"}
+    return {
+        "message": "Abonament adaugat cu succes",
+        "nume": nume,
+        "prenume": prenume,
+        "expira_pe": str(data_expirare)
+    }
 
 
 @app.post("/process")
