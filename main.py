@@ -63,7 +63,7 @@ async def process_image(file: UploadFile = File(...)):
         record = await database.fetch_one(query)
 
         if record:
-            acum = datetime.now(timezone.utc) + timedelta(hours=3) # România = UTC+3
+            acum = datetime.utcnow() + timedelta(hours=3) # România = UTC+3
             data_expirare = record["data_expirare"]
             delta = data_expirare - acum
             total_secunde = int(delta.total_seconds())
