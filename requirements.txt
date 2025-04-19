@@ -11,3 +11,4 @@ python-multipart
 sqlalchemy
 databases
 aiomysql
+cryptography
