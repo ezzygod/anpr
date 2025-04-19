@@ -2,7 +2,8 @@ from sqlalchemy import Column, String, Date
 from sqlalchemy.ext.declarative import declarative_base
 from databases import Database
 
-DATABASE_URL = "mysql+aiomysql://sql7773773:QL5qYji5K5@sql7.freesqldatabase.com:3306/sql7773773"
+# Noua conexiune Railway:
+DATABASE_URL = "mysql+aiomysql://root:iPbRZiKBUhJjdgTvQWvVHEEfbqOMVTtw@mainline.proxy.rlwy.net:21209/railway"
 
 database = Database(DATABASE_URL)
 Base = declarative_base()
