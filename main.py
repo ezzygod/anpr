@@ -6,7 +6,7 @@ from paddleocr import PaddleOCR
 from ultralytics import YOLO
 from utils import correct_plate, process_plate_detection
 from database import database, Subscription
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import os
 
 app = FastAPI()
@@ -63,7 +63,7 @@ async def process_image(file: UploadFile = File(...)):
         record = await database.fetch_one(query)
 
         if record:
-            acum = datetime.now()
+            acum = datetime.now(timezone.utc) + timedelta(hours=3) # România = UTC+3
             data_expirare = record["data_expirare"]
             delta = data_expirare - acum
             total_secunde = int(delta.total_seconds())
