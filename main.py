@@ -1,16 +1,18 @@
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import cv2
 import numpy as np
 from paddleocr import PaddleOCR
 from ultralytics import YOLO
 from utils import correct_plate, process_plate_detection
 from database import database, Subscription
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 import os
 
 app = FastAPI()
 
+# Permite accesul din aplicația Flutter
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://anpr-production.up.railway.app"],
@@ -19,9 +21,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Inițializăm modelele
 model = YOLO("yolov8n.pt")
 ocr = PaddleOCR(use_angle_cls=True, lang='en')
 
+# Conectare la bază de date
 @app.on_event("startup")
 async def startup():
     await database.connect()
@@ -30,6 +34,33 @@ async def startup():
 async def shutdown():
     await database.disconnect()
 
+
+# ✅ Model pentru abonament cu durată customizabilă
+class SubscriptionCreate(BaseModel):
+    nume: str
+    prenume: str
+    numar_inmatriculare: str
+    durata_minute: int  # <-- vine din Flutter
+
+
+# ✅ Endpoint pentru adăugare abonament cu durată personalizată
+@app.post("/add-subscription")
+async def add_subscription(data: SubscriptionCreate):
+    data_achizitie = datetime.utcnow() + timedelta(hours=3)
+    data_expirare = data_achizitie + timedelta(minutes=data.durata_minute)
+
+    query = Subscription.insert().values(
+        nume=data.nume,
+        prenume=data.prenume,
+        numar_inmatriculare=data.numar_inmatriculare,
+        data_achizitie=data_achizitie,
+        data_expirare=data_expirare
+    )
+    await database.execute(query)
+    return {"message": "Abonament adăugat cu succes!"}
+
+
+# ✅ Endpoint pentru procesare imagine
 @app.post("/process")
 async def process_image(file: UploadFile = File(...)):
     image_bytes = await file.read()
@@ -63,7 +94,7 @@ async def process_image(file: UploadFile = File(...)):
         record = await database.fetch_one(query)
 
         if record:
-            acum = datetime.utcnow() + timedelta(hours=3) # România = UTC+3
+            acum = datetime.utcnow() + timedelta(hours=3)
             data_expirare = record["data_expirare"]
             delta = data_expirare - acum
             total_secunde = int(delta.total_seconds())
@@ -81,10 +112,7 @@ async def process_image(file: UploadFile = File(...)):
                 if minute > 0:
                     parts.append(f"{minute} minut{'e' if minute > 1 else ''}")
 
-                if len(parts) > 0:
-                    status = " și ".join(parts) + " rămase"
-                else:
-                    status = "mai puțin de un minut rămas"
+                status = " și ".join(parts) + " rămase" if parts else "mai puțin de un minut rămas"
             elif total_secunde == 0:
                 status = "tocmai a expirat abonamentul"
             else:
@@ -107,6 +135,8 @@ async def process_image(file: UploadFile = File(...)):
 
     return {"plates": results}
 
+
+# ✅ Pornire server
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
