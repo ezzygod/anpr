@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import cv2
@@ -7,7 +7,7 @@ from paddleocr import PaddleOCR
 from ultralytics import YOLO
 from utils import correct_plate, process_plate_detection
 from database import database, Subscription
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 from datetime import datetime, timedelta
 import os
 
@@ -15,7 +15,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://anpr-production.up.railway.app"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -24,16 +24,13 @@ app.add_middleware(
 model = YOLO("yolov8n.pt")
 ocr = PaddleOCR(use_angle_cls=True, lang='en')
 
-
 @app.on_event("startup")
 async def startup():
     await database.connect()
 
-
 @app.on_event("shutdown")
 async def shutdown():
     await database.disconnect()
-
 
 class SubscriptionCreate(BaseModel):
     nume: str
@@ -41,10 +38,8 @@ class SubscriptionCreate(BaseModel):
     numar_inmatriculare: str
     durata_minute: int
 
-
 @app.post("/add-subscription")
 async def add_subscription(data: SubscriptionCreate):
-    # verificăm dacă numărul e deja înregistrat
     query_check = select(Subscription).where(Subscription.c.numar_inmatriculare == data.numar_inmatriculare)
     existing_record = await database.fetch_one(query_check)
 
@@ -55,7 +50,6 @@ async def add_subscription(data: SubscriptionCreate):
             "expira_pe": str(existing_record["data_expirare"])
         }
 
-    # dacă nu există, adăugăm abonamentul
     data_achizitie = datetime.utcnow() + timedelta(hours=3)
     data_expirare = data_achizitie + timedelta(minutes=data.durata_minute)
 
@@ -74,8 +68,6 @@ async def add_subscription(data: SubscriptionCreate):
         "prenume": data.prenume,
         "expira_pe": str(data_expirare)
     }
-
-
 
 def formateaza_status(delta: timedelta) -> str:
     zile = delta.days
@@ -107,13 +99,18 @@ def formateaza_status(delta: timedelta) -> str:
             fragmente.append(f"{valoare} {forma}")
         return " și ".join(fragmente) + " rămase"
 
-
 @app.post("/process")
-async def process_image(file: UploadFile = File(...)):
+async def process_image(request: Request, file: UploadFile = File(...)):  
     image_bytes = await file.read()
     image_array = np.frombuffer(image_bytes, np.uint8)
     frame = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+    return await detect_from_frame(frame, request)  
 
+
+
+
+async def detect_from_frame(frame, request: Request):
+    add_if_not_found = request.query_params.get("add", "false").lower() == "true"
     results = model(frame)
     plates_detected = []
 
@@ -143,10 +140,12 @@ async def process_image(file: UploadFile = File(...)):
         if record:
             acum = datetime.utcnow() + timedelta(hours=3)
             data_expirare = record["data_expirare"]
-            delta = data_expirare - acum
-            total_secunde = int(delta.total_seconds())
+            delta = data_expirare - acum if data_expirare else timedelta(0)
+            total_secunde = int(delta.total_seconds()) if data_expirare else 0
 
-            if total_secunde > 0:
+            if data_expirare is None:
+                status = "neachitat"
+            elif total_secunde > 0:
                 status = formateaza_status(delta)
             elif total_secunde == 0:
                 status = "tocmai a expirat abonamentul"
@@ -154,12 +153,21 @@ async def process_image(file: UploadFile = File(...)):
                 status = "expirat"
 
             plate_info.update({
-                "nume_complet": f"{record['nume']} {record['prenume']}",
+                "nume_complet": f"{record['nume']} {record['prenume']}" if record['nume'] else None,
                 "data_achizitie": str(record["data_achizitie"]),
-                "data_expirare": str(record["data_expirare"]),
+                "data_expirare": str(record["data_expirare"]) if record["data_expirare"] else None,
                 "status": status
             })
         else:
+            # dacă "add=true" => inserează în baza de date
+            if add_if_not_found:
+                data_intrare = datetime.utcnow() + timedelta(hours=3)
+                query_insert = insert(Subscription).values(
+                    numar_inmatriculare=plate_text,
+                    data_achizitie=data_intrare,
+                )
+                await database.execute(query_insert)
+
             plate_info = {
                 "text": plate_info["text"],
                 "confidence": plate_info["confidence"],
@@ -170,6 +178,81 @@ async def process_image(file: UploadFile = File(...)):
 
     return {"plates": results}
 
+
+# ------- NOILE ENDPOINTURI: achita & verifica -------
+
+class AchitaParcareRequest(BaseModel):
+    numar_inmatriculare: str
+    data_expirare: datetime
+
+class VerificaParcareRequest(BaseModel):
+    numar_inmatriculare: str
+
+@app.post("/achita-parcare")
+async def achita_parcare(data: AchitaParcareRequest):
+    acum = datetime.utcnow() + timedelta(hours=3)
+
+    query_check = select(Subscription).where(
+        Subscription.c.numar_inmatriculare == data.numar_inmatriculare,
+        Subscription.c.data_expirare == None
+    )
+    record = await database.fetch_one(query_check)
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Nu există o înregistrare activă fără expirare pentru această mașină")
+
+    # Folosește data_expirare trimisă din Flutter
+    delta = data.data_expirare - acum
+    durata_formatata = formateaza_status(delta)
+
+    query_update = update(Subscription).where(
+        Subscription.c.numar_inmatriculare == data.numar_inmatriculare,
+        Subscription.c.data_expirare == None
+    ).values(data_expirare=data.data_expirare)
+    await database.execute(query_update)
+
+    return {
+        "message": f"Parcarea a fost achitată cu succes pentru {durata_formatata}",
+        "expira_pe": str(data.data_expirare)
+    }
+
+
+@app.post("/verifica-parcare")
+async def verifica_parcare(data: VerificaParcareRequest):
+    numar_inmatriculare = data.numar_inmatriculare
+
+    query = select(Subscription).where(
+        Subscription.c.numar_inmatriculare == numar_inmatriculare
+    )
+    record = await database.fetch_one(query)
+
+    if not record:
+        return {"status": "neînregistrat"}
+
+    acum = datetime.utcnow() + timedelta(hours=3)
+    expirare = record["data_expirare"]
+
+    if expirare is None:
+        return {"status": "neachitat", "data_achizitie": str(record["data_achizitie"])}
+
+    delta = expirare - acum
+    total_secunde = int(delta.total_seconds())
+
+    if total_secunde > 0:
+        status = formateaza_status(delta)
+    elif total_secunde == 0:
+        status = "tocmai a expirat parcarea"
+    else:
+        status = "expirată"
+
+    return {
+        "status": status,
+        "nume_complet": f"{record['nume']} {record['prenume']}" if record['nume'] else None,
+        "data_achizitie": str(record["data_achizitie"]),
+        "data_expirare": str(record["data_expirare"])
+    }
+
+# --------------------------
 
 if __name__ == "__main__":
     import uvicorn
