@@ -129,8 +129,6 @@ async def detect_from_frame(frame, request: Request):
                             plate = correct_plate(raw_text)
                             if plate:
                                 plates_detected.append({"text": plate, "confidence": conf})
-                         except Exception as e:
-                            print("Eroare la extragere OCR:", e)
 
     plates_detected = process_plate_detection(plates_detected)
 
