@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import cv2
 import numpy as np
 from paddleocr import PaddleOCR
+from ultralytics import YOLO
 from utils import correct_plate, process_plate_detection
 from database import database, Subscription
 from sqlalchemy import insert, select, update
@@ -20,6 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+model = YOLO("yolov8n.pt")
 ocr = PaddleOCR(use_angle_cls=True, lang='en')
 
 @app.on_event("startup")
@@ -102,20 +104,29 @@ async def process_image(request: Request, file: UploadFile = File(...)):
     image_bytes = await file.read()
     image_array = np.frombuffer(image_bytes, np.uint8)
     frame = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-    return await detect_from_frame(frame, request)
+    return await detect_from_frame(frame, request)  
+
+
+
 
 async def detect_from_frame(frame, request: Request):
     add_if_not_found = request.query_params.get("add", "false").lower() == "true"
+    results = model(frame)
     plates_detected = []
 
-    ocr_result = ocr.ocr(frame)
-    if ocr_result and ocr_result[0]:
-        for line in ocr_result[0]:
-            if len(line) >= 2 and isinstance(line[1], (list, tuple)) and len(line[1]) >= 2:
-                raw_text, conf = line[1]
-                plate = correct_plate(raw_text)
-                if plate:
-                    plates_detected.append({"text": plate, "confidence": conf})
+    for result in results:
+        for box in result.boxes.xyxy:
+            x1, y1, x2, y2 = map(int, box[:4])
+            crop = frame[y1:y2, x1:x2]
+
+            if crop.size > 0:
+                ocr_result = ocr.ocr(crop, cls=True)
+                if ocr_result and ocr_result[0]:
+                    for line in ocr_result[0]:
+                        raw_text, conf = line[1]
+                        plate = correct_plate(raw_text)
+                        if plate:
+                            plates_detected.append({"text": plate, "confidence": conf})
 
     plates_detected = process_plate_detection(plates_detected)
 
@@ -148,6 +159,7 @@ async def detect_from_frame(frame, request: Request):
                 "status": status
             })
         else:
+            # dacă "add=true" => inserează în baza de date
             if add_if_not_found:
                 data_intrare = datetime.utcnow() + timedelta(hours=3)
                 query_insert = insert(Subscription).values(
@@ -165,6 +177,9 @@ async def detect_from_frame(frame, request: Request):
         results.append(plate_info)
 
     return {"plates": results}
+
+
+# ENDPOINTURI: achita & verifica 
 
 class AchitaParcareRequest(BaseModel):
     numar_inmatriculare: str
@@ -186,6 +201,7 @@ async def achita_parcare(data: AchitaParcareRequest):
     if not record:
         raise HTTPException(status_code=404, detail="Nu există o înregistrare activă fără expirare pentru această mașină")
 
+    # Folosește data_expirare trimisă din Flutter
     delta = data.data_expirare - acum
     durata_formatata = formateaza_status(delta)
 
@@ -199,6 +215,7 @@ async def achita_parcare(data: AchitaParcareRequest):
         "message": f"Parcarea a fost achitată cu succes pentru {durata_formatata}",
         "expira_pe": str(data.data_expirare)
     }
+
 
 @app.post("/verifica-parcare")
 async def verifica_parcare(data: VerificaParcareRequest):
@@ -234,6 +251,8 @@ async def verifica_parcare(data: VerificaParcareRequest):
         "data_achizitie": str(record["data_achizitie"]),
         "data_expirare": str(record["data_expirare"])
     }
+
+# --------------------------
 
 if __name__ == "__main__":
     import uvicorn
