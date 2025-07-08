@@ -135,8 +135,6 @@ async def detect_from_frame(frame, request: Request):
 
     plates_detected = process_plate_detection(plates_detected)
 
-    plates_detected = process_plate_detection(plates_detected)
-
     results = []
     for plate_info in plates_detected:
         plate_text = plate_info["text"]
