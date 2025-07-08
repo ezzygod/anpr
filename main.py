@@ -120,7 +120,7 @@ async def detect_from_frame(frame, request: Request):
             crop = frame[y1:y2, x1:x2]
 
             if crop.size > 0:
-                ocr_result = ocr.ocr(crop, cls=True)
+                ocr_result = ocr.ocr(crop)
                 if ocr_result and ocr_result[0]:
                     for line in ocr_result[0]:
                         raw_text, conf = line[1]
