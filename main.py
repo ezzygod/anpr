@@ -120,18 +120,13 @@ async def detect_from_frame(frame, request: Request):
             crop = frame[y1:y2, x1:x2]
 
             if crop.size > 0:
-                ocr_result = ocr.ocr(crop)
+                ocr_result = ocr.ocr(crop, cls=True)
                 if ocr_result and ocr_result[0]:
                     for line in ocr_result[0]:
-                        try:
-                            if len(line) > 1 and isinstance(line[1], list) and len(line[1]) >= 2:
-                                raw_text = line[1][0]
-                                conf = line[1][1]
-                                plate = correct_plate(raw_text)
-                                if plate:
-                                    plates_detected.append({"text": plate, "confidence": conf})
-                        except Exception as e:
-                            print("Eroare OCR:", e)
+                        raw_text, conf = line[1]
+                        plate = correct_plate(raw_text)
+                        if plate:
+                            plates_detected.append({"text": plate, "confidence": conf})
 
     plates_detected = process_plate_detection(plates_detected)
 
