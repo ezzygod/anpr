@@ -7,13 +7,13 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Setează directorul de lucru
+# Setez directorul de lucru
 WORKDIR /app
 
-# Copiază fișierele proiectului
+# Copiez fisierele proiectului
 COPY . .
 
-# Actualizează pip, setuptools și wheel (important pentru build-ul unor pachete)
+# Actualizez pip, setuptools și wheel (important pentru build-ul unor pachete)
 RUN pip install --upgrade pip setuptools wheel
 
 # Instalează pachetele din requirements.txt
